@@ -1,5 +1,5 @@
 ---
-title: "SIPP Experimentation for Lumina"
+title: "SIPP Experimentation"
 format: html
 embed-resources: true
 editor_options: 
