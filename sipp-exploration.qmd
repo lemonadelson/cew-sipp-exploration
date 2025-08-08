@@ -1,0 +1,318 @@
+---
+title: "SIPP Experimentation for Lumina"
+format: html
+embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# Setup 
+
+This code taken from Census website, with some edits made to variables and file location.
+
+```{r}
+#Load the "data.table", "dplyr", and "bit64" libraries
+require("data.table")
+require("bit64")
+require("dplyr")
+
+#Read in the Primary Data file. Choose only the variables you want to read in in order to save on memory.
+#This code assumes that your working directory is the same directory as the data.
+ds <- c("/Users/mca141/Documents/Lumina/lumina-sipp/data/pu2020.csv")
+pu <- fread(ds, sep = "|", select = c(
+  
+  #Common case identification variables
+  'SSUID','PNUM','MONTHCODE','ERESIDENCEID','ERELRPE','SPANEL','SWAVE', 'TEHC_ST',
+  
+  #The base weight
+  'WPFINWGT',
+  
+  #Common demographics variables, including age at time of interview (TAGE)
+  #	and monthly age during the reference period (TAGE_EHC)
+  'ESEX','TAGE','TAGE_EHC','ERACE','EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR',
+  
+  #Additional variables for analysis
+  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN'))
+
+#Make sure all the column names are upper-case
+names(pu) <- toupper(names(pu))
+
+```
+
+Other libraries I might need
+
+```{r}
+library(tidyverse)
+library(haven)
+library(srvyr)
+```
+
+# Exploration of full data set
+
+Mean total ed debt by education level
+
+```{r}
+pu |>
+  filter(
+    EED_SCRNR == 2, # Not currently enrolled
+    !is.na(TDEBT_ED) # Total ed debt not NA
+  ) |>
+  group_by(EEDUC) |>
+  summarize(mean(TDEBT_ED))
+
+```
+
+Age breakdown
+```{r}
+pu |>
+  group_by(TAGE) |>
+  summarize() |>
+  print(n = 90)
+```
+
+TAGE is age by year, 0-89.
+
+Month breakdown
+
+```{r}
+pu |>
+  filter(!is.na(TDEBT_ED),
+         !is.na(TOEDDEBTVAL),
+         !is.na(TJSEDDEBTVAL)) |>
+  group_by(MONTHCODE) |>
+  summarize(sum(TDEBT_ED),
+            "testsum" = sum(TOEDDEBTVAL) + sum(TJSEDDEBTVAL),
+            sum(TOEDDEBTVAL),
+            sum(TJSEDDEBTVAL)
+            )
+```
+
+Reference month is recorded, but it doesn't seem to be used for education debt - all months have same number of observations and values.
+
+Spouse stuff
+
+```{r}
+pu |>
+  filter(!is.na(TDEBT_ED),
+         !is.na(TOEDDEBTVAL)) |>
+  group_by(MONTHCODE) |>
+  summarize(sum(TDEBT_ED),
+            "testdiff" = sum(TDEBT_ED) - sum(TOEDDEBTVAL),
+            sum(TOEDDEBTVAL)
+            )
+```
+
+Amounts owed jointly with spouse are smaller by a couple orders of magnitude (when summed).
+
+Certs/educ
+
+```{r}
+pu |>
+  # filter(EEDUC %in% c(40,41)) |>
+  group_by(ECERT,EEDUC) |>
+  summarize(n()) |>
+  print(n=41)
+```
+
+
+# Create Dec-only data frame
+
+```{r}
+#| label: Create sippdec
+
+
+sippdec <- pu |>
+  filter(
+    MONTHCODE == 12,
+    !is.na(EEDUC)
+  ) |>
+  
+  # Create 4 education groups
+  mutate(
+    educ_grp = case_when(
+      EEDUC <= 39 ~ "HS or less",
+      EEDUC %in% c(40,41) ~ "Some college",
+      EEDUC == 42 ~ "AA",
+      EEDUC == 43 ~ "BA",
+      TRUE ~ "Graduate"
+    ),
+    
+    # Add certificates
+    educ_grp_cert = case_when(
+      educ_grp %in% c("HS or less", "Some college") & ECERT == 1 ~ "Certificate",
+      educ_grp %in% c("HS or less", "Some college") & EPROCERT == 1 ~ "Certificate",
+      TRUE ~ educ_grp
+    ),
+    
+    # Add age groups
+    age_grp = case_when(
+      TAGE_EHC >= 18 & TAGE_EHC <= 24 ~ "18 to 24",
+      TAGE_EHC >= 25 & TAGE_EHC <= 34 ~ "25 to 34",
+      TAGE_EHC >= 35 & TAGE_EHC <= 44 ~ "35 to 44",
+      TAGE_EHC >= 45 & TAGE_EHC <= 64 ~ "45 to 64",
+      TRUE ~ NA
+    )
+  )
+  
+```
+
+Create 4 education groups (incorporated into "Create sippdec")
+```{r}
+#| eval: false
+#| include: false
+
+
+sippdec <- sippdec |>
+  filter(!is.na(EEDUC)) |>
+  mutate(
+    educ_grp = case_when(
+      EEDUC <= 39 ~ "HS or less",
+      EEDUC %in% c(40,41) ~ "Some college",
+      EEDUC == 42 ~ "AA",
+      EEDUC == 43 ~ "BA",
+      TRUE ~ "Graduate"
+    )
+  )
+```
+
+Add certificates (incorporated into "Create sippdec")
+```{r}
+#| eval: false
+#| include: false
+
+sippdec <- sippdec |>
+  mutate(
+    educ_grp_cert = case_when(
+      educ_grp %in% c("HS or less", "Some college") & ECERT == 1 ~ "Certificate",
+      educ_grp %in% c("HS or less", "Some college") & EPROCERT == 1 ~ "Certificate",
+      TRUE ~ educ_grp
+    )
+  )
+
+```
+
+Create age groups (incorporated into "Create sippdec")
+```{r}
+#| eval: false
+#| include: false
+
+
+sippdec <- sippdec |>
+  mutate(
+    age_grp = case_when(
+      TAGE_EHC >= 18 & TAGE_EHC <= 24 ~ "18 to 24",
+      TAGE_EHC >= 25 & TAGE_EHC <= 34 ~ "25 to 34",
+      TAGE_EHC >= 35 & TAGE_EHC <= 44 ~ "35 to 44",
+      TAGE_EHC >= 45 & TAGE_EHC <= 64 ~ "45 to 64",
+      TRUE ~ NA
+    )
+  )
+
+```
+
+
+## Convert to survey object
+
+```{r}
+sippdecsvy <- sippdec |> as_survey_design(weights = WPFINWGT)
+```
+
+# Debt by education level
+
+Table: total loans owned in own name, disaggregated by education, not currently enrolled
+
+```{r}
+
+sippdecsvy |>
+  filter(EED_SCRNR == 2,
+         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0,
+         # TAGE_EHC > 24,
+         # TAGE_EHC < 66
+         ) |>
+  group_by(educ_grp_cert) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+  
+```
+
+# Debt by education level (detailed graduates)
+
+```{r}
+# Graduate degrees
+sippdecsvy |>
+  filter(EED_SCRNR == 2,
+         educ_grp_cert == "Graduate",
+         TOEDDEBTVAL > 0,
+         ) |>
+  group_by(EEDUC) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+
+# Professional cert
+sippdecsvy |>
+  filter(EED_SCRNR == 2,
+         EPROCERT == 1,
+         TOEDDEBTVAL > 0,
+         ) |>
+  group_by(EPROCERT) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+  
+```
+
+# Debt by age group
+
+```{r}
+
+sippdecsvy |>
+  filter(EED_SCRNR == 2,
+         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0,
+         !is.na(age_grp),
+         ) |>
+  group_by(age_grp) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+  
+```
+
+
+# Dec 2019: descriptive statistics
+
+Count of all observations
+```{r}
+sippdecsvy |> survey_count()
+```
+
+Mean and median age
+```{r}
+sippdecsvy |> summarize(survey_mean(TAGE_EHC))
+# Mean = 46.2
+
+sippdecsvy |> summarize(medage = survey_median(TAGE_EHC))
+# Median = 46
+```
+
+Mean age (completers, not currently enrolled)
+```{r}
+sippdecsvy |>
+  filter(
+    EED_SCRNR == 2,
+    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0) |> summarize(meanage = survey_mean(TAGE_EHC))
+# Mean = 39
+
+sippdecsvy |>
+  filter(
+    EED_SCRNR == 2,
+    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0) |> summarize(medage = survey_median(TAGE_EHC))
+# Median = 37
+```
+
+
+Gender breakdown
+```{r}
+sippdecsvy |> group_by(ESEX) |> summarize(survey_prop())
+# 51.6% female, 48.4% male
+```
+
+
+
