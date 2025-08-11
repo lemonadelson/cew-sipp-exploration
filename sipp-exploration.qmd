@@ -29,7 +29,7 @@ pu <- fread(ds, sep = "|", select = c(
   
   #Common demographics variables, including age at time of interview (TAGE)
   #	and monthly age during the reference period (TAGE_EHC)
-  'ESEX','TAGE','TAGE_EHC','ERACE','EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR',
+  'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR',
   
   #Additional variables for analysis
   'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN'))
@@ -151,6 +151,18 @@ sippdec <- pu |>
       TAGE_EHC >= 35 & TAGE_EHC <= 44 ~ "35 to 44",
       TAGE_EHC >= 45 & TAGE_EHC <= 64 ~ "45 to 64",
       TRUE ~ NA
+    ),
+    
+    # Combine race and ethnicity
+    raceeth =  case_when(
+      EORIGIN == 1 ~ "Hispanic/Latino",
+      TRACE == 1 ~ "White",
+      TRACE == 2 ~ "Black",
+      TRACE == 3 ~ "American Indian/Alaska Native",
+      TRACE == 4 ~ "Asian/Asian American",
+      TRACE == 5 ~ "Native Hawaiian/Pacific Islander",
+      TRACE >= 6 ~ "More than one race/ethnicity",
+      TRUE ~ NA
     )
   )
   
@@ -162,17 +174,17 @@ Create 4 education groups (incorporated into "Create sippdec")
 #| include: false
 
 
-sippdec <- sippdec |>
-  filter(!is.na(EEDUC)) |>
-  mutate(
-    educ_grp = case_when(
-      EEDUC <= 39 ~ "HS or less",
-      EEDUC %in% c(40,41) ~ "Some college",
-      EEDUC == 42 ~ "AA",
-      EEDUC == 43 ~ "BA",
-      TRUE ~ "Graduate"
-    )
-  )
+# sippdec <- sippdec |>
+#   filter(!is.na(EEDUC)) |>
+#   mutate(
+#     educ_grp = case_when(
+#       EEDUC <= 39 ~ "HS or less",
+#       EEDUC %in% c(40,41) ~ "Some college",
+#       EEDUC == 42 ~ "AA",
+#       EEDUC == 43 ~ "BA",
+#       TRUE ~ "Graduate"
+#     )
+#   )
 ```
 
 Add certificates (incorporated into "Create sippdec")
@@ -180,14 +192,14 @@ Add certificates (incorporated into "Create sippdec")
 #| eval: false
 #| include: false
 
-sippdec <- sippdec |>
-  mutate(
-    educ_grp_cert = case_when(
-      educ_grp %in% c("HS or less", "Some college") & ECERT == 1 ~ "Certificate",
-      educ_grp %in% c("HS or less", "Some college") & EPROCERT == 1 ~ "Certificate",
-      TRUE ~ educ_grp
-    )
-  )
+# sippdec <- sippdec |>
+#   mutate(
+#     educ_grp_cert = case_when(
+#       educ_grp %in% c("HS or less", "Some college") & ECERT == 1 ~ "Certificate",
+#       educ_grp %in% c("HS or less", "Some college") & EPROCERT == 1 ~ "Certificate",
+#       TRUE ~ educ_grp
+#     )
+#   )
 
 ```
 
@@ -197,16 +209,16 @@ Create age groups (incorporated into "Create sippdec")
 #| include: false
 
 
-sippdec <- sippdec |>
-  mutate(
-    age_grp = case_when(
-      TAGE_EHC >= 18 & TAGE_EHC <= 24 ~ "18 to 24",
-      TAGE_EHC >= 25 & TAGE_EHC <= 34 ~ "25 to 34",
-      TAGE_EHC >= 35 & TAGE_EHC <= 44 ~ "35 to 44",
-      TAGE_EHC >= 45 & TAGE_EHC <= 64 ~ "45 to 64",
-      TRUE ~ NA
-    )
-  )
+# sippdec <- sippdec |>
+#   mutate(
+#     age_grp = case_when(
+#       TAGE_EHC >= 18 & TAGE_EHC <= 24 ~ "18 to 24",
+#       TAGE_EHC >= 25 & TAGE_EHC <= 34 ~ "25 to 34",
+#       TAGE_EHC >= 35 & TAGE_EHC <= 44 ~ "35 to 44",
+#       TAGE_EHC >= 45 & TAGE_EHC <= 64 ~ "45 to 64",
+#       TRUE ~ NA
+#     )
+#   )
 
 ```
 
@@ -217,7 +229,79 @@ sippdec <- sippdec |>
 sippdecsvy <- sippdec |> as_survey_design(weights = WPFINWGT)
 ```
 
-# Debt by education level
+# Dec 2019: descriptive statistics
+
+Count of all observations
+```{r}
+sippdecsvy |> survey_count()
+# 265,471,419 weighted observations
+
+```
+
+Mean and median age
+```{r}
+sippdecsvy |> summarize(survey_mean(TAGE_EHC))
+# Mean = 46.2
+
+sippdecsvy |> summarize(medage = survey_median(TAGE_EHC))
+# Median = 46
+
+```
+
+Mean age (completers, not currently enrolled)
+```{r}
+sippdecsvy |>
+  filter(
+    EED_SCRNR == 2,
+    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0) |> summarize(meanage = survey_mean(TAGE_EHC))
+# Mean = 39
+
+sippdecsvy |>
+  filter(
+    EED_SCRNR == 2,
+    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0) |> summarize(medage = survey_median(TAGE_EHC))
+# Median = 37
+
+```
+
+
+Gender breakdown
+```{r}
+sippdecsvy |> group_by(ESEX) |> summarize(survey_prop())
+# 51.6% female, 48.4% male
+
+```
+
+Race/ethnicity breakdown
+
+```{r}
+sippdecsvy |> group_by(raceeth) |> survey_count()
+#  raceeth                                   n    n_se
+# 1 American Indian/Alaska Native      1500180.  96742.
+# 2 Asian/Asian American              16480940. 362202.
+# 3 Black                             31802000. 533623.
+# 4 Hispanic/Latino                   45297695. 568669.
+# 5 More than one race/ethnicity       5161401. 197367.
+# 6 Native Hawaiian/Pacific Islander    567135.  65311.
+# 7 White                            164662067. 742775.
+
+sippdecsvy |> group_by(raceeth) |> summarize(survey_prop())
+#  raceeth                             coef    `_se`
+# 1 American Indian/Alaska Native    0.00565 0.000365
+# 2 Asian/Asian American             0.0621  0.00135 
+# 3 Black                            0.120   0.00193 
+# 4 Hispanic/Latino                  0.171   0.00208 
+# 5 More than one race/ethnicity     0.0194  0.000742
+# 6 Native Hawaiian/Pacific Islander 0.00214 0.000246
+# 7 White                            0.620   0.00267 
+```
+
+
+# Simple analyses
+
+## Debt by education level
 
 Table: total loans owned in own name, disaggregated by education, not currently enrolled
 
@@ -235,7 +319,7 @@ sippdecsvy |>
   
 ```
 
-# Debt by education level (detailed graduates)
+## Debt by education level (detailed graduates)
 
 ```{r}
 # Graduate degrees
@@ -258,7 +342,7 @@ sippdecsvy |>
   
 ```
 
-# Debt by age group
+## Debt by age group
 
 ```{r}
 
@@ -273,46 +357,77 @@ sippdecsvy |>
   
 ```
 
+## Debt by race/ethnicity
 
-# Dec 2019: descriptive statistics
-
-Count of all observations
-```{r}
-sippdecsvy |> survey_count()
-```
-
-Mean and median age
-```{r}
-sippdecsvy |> summarize(survey_mean(TAGE_EHC))
-# Mean = 46.2
-
-sippdecsvy |> summarize(medage = survey_median(TAGE_EHC))
-# Median = 46
-```
-
-Mean age (completers, not currently enrolled)
 ```{r}
 sippdecsvy |>
-  filter(
-    EED_SCRNR == 2,
-    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
-         TOEDDEBTVAL > 0) |> summarize(meanage = survey_mean(TAGE_EHC))
-# Mean = 39
+  filter(EED_SCRNR == 2,
+         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0,
+         !is.na(raceeth),
+         ) |>
+  group_by(raceeth) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+
+#   raceeth                          meddebt meddebt_se
+#   <chr>                              <dbl>      <dbl>
+# 1 American Indian/Alaska Native      21000      8332.
+# 2 Asian/Asian American               30000      7562.
+# 3 Black                              24500      2543.
+# 4 Hispanic/Latino                    20000      1779.
+# 5 More than one race/ethnicity       26800      5287.
+# 6 Native Hawaiian/Pacific Islander    5000     18084.
+# 7 White                              20000      1020.
+```
+
+
+
+# Multivariate analyses
+
+
+## Median education loans by highest credential and age
+
+```{r}
 
 sippdecsvy |>
-  filter(
-    EED_SCRNR == 2,
-    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
-         TOEDDEBTVAL > 0) |> summarize(medage = survey_median(TAGE_EHC))
-# Median = 37
+  filter(EED_SCRNR == 2,
+         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0,
+         !is.na(age_grp)
+         ) |>
+  group_by(age_grp, educ_grp_cert) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL))
+
+#    age_grp  educ_grp_cert meddebt meddebt_se
+#    <chr>    <chr>           <dbl>      <dbl>
+#  1 18 to 24 AA              10000      2404.
+#  2 18 to 24 BA              20000      2562.
+#  3 18 to 24 Certificate      5000      1609.
+#  4 18 to 24 Graduate        40000       NaN 
+#  5 25 to 34 AA              17000      3151.
+#  6 25 to 34 BA              20000      1018.
+#  7 25 to 34 Certificate     12000      1767.
+#  8 25 to 34 Graduate        60000      5069.
+#  9 35 to 44 AA              20000      3777.
+# 10 35 to 44 BA              15000      1703.
+# 11 35 to 44 Certificate     12000      2521.
+# 12 35 to 44 Graduate        50000      6095.
+# 13 45 to 64 AA              18000      3283.
+# 14 45 to 64 BA              23000      2794.
+# 15 45 to 64 Certificate     12000      2526.
+# 16 45 to 64 Graduate        40000      4317.
 ```
 
-
-Gender breakdown
-```{r}
-sippdecsvy |> group_by(ESEX) |> summarize(survey_prop())
-# 51.6% female, 48.4% male
-```
+## Median education loans by highest credential and race/ethnicity
 
 
+## Median education loans by highest credential and state
 
+
+## Median education loans by highest credential, race/ethnicity, and state
+
+
+# Experimental analyses
+
+
+## Identifying recent completers
