@@ -32,7 +32,9 @@ pu <- fread(ds, sep = "|", select = c(
   'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR',
   
   #Additional variables for analysis
-  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN'))
+  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN',
+  # Parent/child variables
+  'EPAR_SCRNR', 'ERP', 'RPNCHILD1', 'EANYKID'))
 
 #Make sure all the column names are upper-case
 names(pu) <- toupper(names(pu))
@@ -296,6 +298,7 @@ sippdecsvy |> group_by(raceeth) |> summarize(survey_prop())
 # 5 More than one race/ethnicity     0.0194  0.000742
 # 6 Native Hawaiian/Pacific Islander 0.00214 0.000246
 # 7 White                            0.620   0.00267 
+
 ```
 
 State breakdown
@@ -305,60 +308,6 @@ sippdecsvy |>
   survey_count() |>
   print (n = 55)
 
-#    TEHC_ST         n    n_se
-#      <int>     <dbl>   <dbl>
-# AL       1  3944375. 143350. 
-# AK       2   590854.  74177. 
-# AZ       4  5889512. 193237.
-# AR       5  2458351. 141506. 
-# CA       6 31974010. 442289. 
-# CO       8  4690127. 151764. 
-# CT       9  2947591. 138807.
-# DE      10   777428.  79706.
-# DC      11   590263.  66082.
-# FL      12 17934954. 393305.
-# GA      13  8464477. 259810.
-# HI      15  1057822.  87170.
-# ID      16  1452278.  86649.
-# IL      17 10210322. 320077.
-# IN      18  5390025. 188790.
-# IA      19  2531893. 128885.
-# KS      20  2280989. 130494.
-# KY      21  3589667. 155121.
-# LA      22  3653664. 159184.
-# ME      23  1224354. 100839.
-# MD      24  4880238. 182078.
-# MA      25  5844550. 306412.
-# MI      26  8192460. 226638.
-# MN      27  4540823. 187652.
-# MS      28  2347386. 113959.
-# MO      29  4950279. 215068.
-# MT      30   892684.  65195.
-# NE      31  1521521.  93646.
-# NV      32  2504004. 136283.
-# NH      33  1119285.  85267.
-# NJ      34  7282342. 283938.
-# NM      35  1655414.  93967.
-# NY      36 15957550. 364557.
-# NC      37  8445779. 254255.
-# ND      38   555514.  52861.
-# OH      39  9479458. 266650.
-# OK      40  3087132. 130698.
-# OR      41  3512740. 141510.
-# PA      42 10504114. 275518.
-# RI      44   801461.  74806.
-# SC      45  4156878. 166889.
-# SD      46   657002.  59933.
-# TN      47  5507785. 179683.
-# TX      48 22709000. 399086.
-# UT      49  2460607. 128261.
-# VT      50   520392.  68032.
-# VA      51  6844225. 242858.
-# WA      53  6205528. 196972.
-# WV      54  1461547.  92060.
-# WI      55  4747159. 168556.
-# WY      56   473600.  52435.
-# Foreign Country      61        0       0 
 ```
 
 
@@ -379,6 +328,22 @@ sippdecsvy |>
          ) |>
   group_by(educ_grp_cert) |>
   summarize(meddebt = survey_median(TOEDDEBTVAL))
+  
+```
+
+Count of observations
+
+```{r}
+
+sippdec |>
+  filter(EED_SCRNR == 2,
+         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         TOEDDEBTVAL > 0,
+         # TAGE_EHC > 24,
+         # TAGE_EHC < 66
+         ) |>
+  group_by(educ_grp_cert) |>
+  summarize(n())
   
 ```
 
@@ -432,17 +397,7 @@ sippdecsvy |>
   group_by(raceeth) |>
   summarize(meddebt = survey_median(TOEDDEBTVAL))
 
-#   raceeth                          meddebt meddebt_se
-#   <chr>                              <dbl>      <dbl>
-# 1 American Indian/Alaska Native      21000      8332.
-# 2 Asian/Asian American               30000      7562.
-# 3 Black                              24500      2543.
-# 4 Hispanic/Latino                    20000      1779.
-# 5 More than one race/ethnicity       26800      5287.
-# 6 Native Hawaiian/Pacific Islander    5000     18084.
-# 7 White                              20000      1020.
 ```
-
 
 
 # Multivariate analyses
@@ -459,27 +414,10 @@ sippdecsvy |>
          !is.na(age_grp)
          ) |>
   group_by(age_grp, educ_grp_cert) |>
-  summarize(meddebt = survey_median(TOEDDEBTVAL))
+  summarize(meddebt = survey_median(TOEDDEBTVAL), unw_count = n())
 
-#    age_grp  educ_grp_cert meddebt meddebt_se
-#    <chr>    <chr>           <dbl>      <dbl>
-#  1 18 to 24 AA              10000      2404.
-#  2 18 to 24 BA              20000      2562.
-#  3 18 to 24 Certificate      5000      1609.
-#  4 18 to 24 Graduate        40000       NaN 
-#  5 25 to 34 AA              17000      3151.
-#  6 25 to 34 BA              20000      1018.
-#  7 25 to 34 Certificate     12000      1767.
-#  8 25 to 34 Graduate        60000      5069.
-#  9 35 to 44 AA              20000      3777.
-# 10 35 to 44 BA              15000      1703.
-# 11 35 to 44 Certificate     12000      2521.
-# 12 35 to 44 Graduate        50000      6095.
-# 13 45 to 64 AA              18000      3283.
-# 14 45 to 64 BA              23000      2794.
-# 15 45 to 64 Certificate     12000      2526.
-# 16 45 to 64 Graduate        40000      4317.
 ```
+
 
 ## Median education loans by highest credential and race/ethnicity
 
@@ -492,41 +430,10 @@ sippdecsvy |>
          !is.na(raceeth)
          ) |>
   group_by(raceeth, educ_grp_cert) |>
-  summarize(meddebt = survey_median(TOEDDEBTVAL)) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL), unw_count = n()) |>
   print(n = 30)
 
-#    raceeth                          educ_grp_cert meddebt meddebt_se
-#    <chr>                            <chr>           <dbl>      <dbl>
-#  1 American Indian/Alaska Native    AA              30000       NaN 
-#  2 American Indian/Alaska Native    BA              16000       NaN 
-#  3 American Indian/Alaska Native    Certificate     15000         0 
-#  4 American Indian/Alaska Native    Graduate       218000         0 
-#  5 Asian/Asian American             AA               5000      8416.
-#  6 Asian/Asian American             BA              18000      4959.
-#  7 Asian/Asian American             Certificate      5700     21152.
-#  8 Asian/Asian American             Graduate        65000     12607.
-#  9 Black                            AA              15000      4742.
-# 10 Black                            BA              20000      5312.
-# 11 Black                            Certificate     12000      3261.
-# 12 Black                            Graduate        52000     11348.
-# 13 Hispanic/Latino                  AA              20000      4697.
-# 14 Hispanic/Latino                  BA              20000      2857.
-# 15 Hispanic/Latino                  Certificate      9000      1378.
-# 16 Hispanic/Latino                  Graduate        40000      9287.
-# 17 More than one race/ethnicity     AA              30000      9440.
-# 18 More than one race/ethnicity     BA              20000      3952.
-# 19 More than one race/ethnicity     Certificate     12000       NaN 
-# 20 More than one race/ethnicity     Graduate        68000     39389.
-# 21 Native Hawaiian/Pacific Islander AA              39000       NaN 
-# 22 Native Hawaiian/Pacific Islander BA               5000       NaN 
-# 23 Native Hawaiian/Pacific Islander Certificate      1500       NaN 
-# 24 Native Hawaiian/Pacific Islander Graduate        90000         0 
-# 25 White                            AA              16000      1777.
-# 26 White                            BA              20000      1019.
-# 27 White                            Certificate     10000      1269.
-# 28 White                            Graduate        40000      3054.
 ```
-
 
 ## Median education loans by highest credential and state
 
@@ -540,201 +447,8 @@ sippdecsvy |>
          TEHC_ST <= 60
          ) |>
   group_by(TEHC_ST, educ_grp_cert) |>
-  summarize(meddebt = survey_median(TOEDDEBTVAL)) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL), unw_count = n()) |>
   print(n = 210)
-
-#     TEHC_ST educ_grp_cert meddebt meddebt_se
-#       <int> <chr>           <dbl>      <dbl>
-#   1       1 AA                300       NaN 
-#   2       1 BA              14500     10338.
-#   3       1 Certificate     10000       NaN 
-#   4       1 Graduate       120000       NaN 
-#   5       2 BA               2500       NaN 
-#   6       4 AA              10000     10212.
-#   7       4 BA              25000     12422.
-#   8       4 Certificate     12000      3264.
-#   9       4 Graduate        90000     54294.
-#  10       5 BA              27000       NaN 
-#  11       5 Certificate      3000       NaN 
-#  12       5 Graduate       100000       NaN 
-#  13       6 AA              12000      4734.
-#  14       6 BA              20000      2855.
-#  15       6 Certificate     12000      2472.
-#  16       6 Graduate        53000     10288.
-#  17       8 AA              15000     13552.
-#  18       8 BA              16000      5210.
-#  19       8 Certificate      7000      8289.
-#  20       8 Graduate        40000     18973.
-#  21       9 AA              10000       NaN 
-#  22       9 BA              20000     12822.
-#  23       9 Certificate     20000     56249.
-#  24       9 Graduate        20000     16664.
-#  25      10 AA               3000       NaN 
-#  26      10 BA              21000       NaN 
-#  27      10 Certificate      3500       NaN 
-#  28      10 Graduate        90000       NaN 
-#  29      11 BA              20000         0 
-#  30      11 Graduate        49000       NaN 
-#  31      12 AA              12000      4845.
-#  32      12 BA              28000      8430.
-#  33      12 Certificate      9000      3255.
-#  34      12 Graduate        45000     20253.
-#  35      13 AA              22000      8806.
-#  36      13 BA               8000      6137.
-#  37      13 Certificate     12000     12494.
-#  38      13 Graduate        40000     24368.
-#  39      15 BA               5000       NaN 
-#  40      15 Graduate        90000       NaN 
-#  41      16 AA               2500       NaN 
-#  42      16 BA              14000       NaN 
-#  43      16 Certificate      3800       NaN 
-#  44      16 Graduate        57000       NaN 
-#  45      17 AA               2000       NaN 
-#  46      17 BA              20000      8090.
-#  47      17 Certificate      7000      3097.
-#  48      17 Graduate        65000      7389.
-#  49      18 AA              30000     21594.
-#  50      18 BA              17000      3655.
-#  51      18 Certificate     10400      6627.
-#  52      18 Graduate        30000     54846.
-#  53      19 AA              11000     19771.
-#  54      19 BA              20000      8563.
-#  55      19 Certificate      6500       NaN 
-#  56      19 Graduate        75000       NaN 
-#  57      20 AA              16000       NaN 
-#  58      20 BA              17000     10322.
-#  59      20 Certificate      5000       NaN 
-#  60      20 Graduate        20000       NaN 
-#  61      21 AA               7500       NaN 
-#  62      21 BA              20000      8562.
-#  63      21 Certificate     12000      8859.
-#  64      21 Graduate        22000     19873.
-#  65      22 AA              14000       NaN 
-#  66      22 BA              10000      9520.
-#  67      22 Certificate     20000      9515.
-#  68      22 Graduate        38000       NaN 
-#  69      23 AA              35000       NaN 
-#  70      23 BA              30000     11493.
-#  71      23 Graduate        50000       NaN 
-#  72      24 AA              14000       NaN 
-#  73      24 BA              24000      5134.
-#  74      24 Certificate     20000       NaN 
-#  75      24 Graduate        42000     19527.
-#  76      25 AA               8000       NaN 
-#  77      25 BA              13300     16157.
-#  78      25 Certificate     20000       NaN 
-#  79      25 Graduate        38000     16982.
-#  80      26 AA              30000     11656.
-#  81      26 BA              30000      8418.
-#  82      26 Certificate     14000      9952.
-#  83      26 Graduate        25000      7323.
-#  84      27 AA              19800     22008.
-#  85      27 BA              14000      5112.
-#  86      27 Certificate     36000         0 
-#  87      27 Graduate        48000     24096.
-#  88      28 AA              15000       NaN 
-#  89      28 BA              20000     19972.
-#  90      28 Certificate     24000         0 
-#  91      28 Graduate        40000       NaN 
-#  92      29 AA              60000       NaN 
-#  93      29 BA              20000      3672.
-#  94      29 Certificate     12000       NaN 
-#  95      29 Graduate        19000       NaN 
-#  96      30 AA              20000       NaN 
-#  97      30 BA              35000       NaN 
-#  98      30 Graduate        60000       NaN 
-#  99      31 AA              42000       NaN 
-# 100      31 BA              28000     10563.
-# 101      31 Certificate     12000       NaN 
-# 102      31 Graduate       103000       NaN 
-# 103      32 AA              10000       NaN 
-# 104      32 BA              12000       NaN 
-# 105      32 Certificate     25000       NaN 
-# 106      32 Graduate        40000       NaN 
-# 107      33 AA              28000       NaN 
-# 108      33 BA              19800     13262.
-# 109      33 Certificate     13000       NaN 
-# 110      33 Graduate       236000         0 
-# 111      34 AA              33900       NaN 
-# 112      34 BA              12000      4638.
-# 113      34 Certificate     13000       NaN 
-# 114      34 Graduate        40000     14930.
-# 115      35 AA              65000         0 
-# 116      35 BA               2300       NaN 
-# 117      35 Certificate     15000       NaN 
-# 118      35 Graduate        25000       NaN 
-# 119      36 AA              11000     10142.
-# 120      36 BA              15000      2754.
-# 121      36 Certificate      9000      5896.
-# 122      36 Graduate        50000     10005.
-# 123      37 AA              23000      7343.
-# 124      37 BA              27000      6410.
-# 125      37 Certificate     10000      7854.
-# 126      37 Graduate        60000      9690.
-# 127      38 BA              20000         0 
-# 128      38 Graduate        44000       NaN 
-# 129      39 AA              20000     11714.
-# 130      39 BA              21200      2979.
-# 131      39 Certificate      7000      5712.
-# 132      39 Graduate        72000     28155.
-# 133      40 AA              15000       NaN 
-# 134      40 BA              40000     25644.
-# 135      40 Certificate      5000       NaN 
-# 136      40 Graduate        50000     54206.
-# 137      41 AA              18000     15828.
-# 138      41 BA              30000      8958.
-# 139      41 Certificate      6000       NaN 
-# 140      41 Graduate        14000      9996.
-# 141      42 AA              25000      5362.
-# 142      42 BA              28000      4931.
-# 143      42 Certificate     10000      7378.
-# 144      42 Graduate        60000      8529.
-# 145      44 BA               2000       NaN 
-# 146      44 Certificate      9000       NaN 
-# 147      44 Graduate        25000       NaN 
-# 148      45 AA              12000      5661.
-# 149      45 BA              26800     13310.
-# 150      45 Certificate      7000       NaN 
-# 151      45 Graduate        50000     47252.
-# 152      46 AA              10000       NaN 
-# 153      46 BA              12000       NaN 
-# 154      46 Certificate      4500       NaN 
-# 155      46 Graduate        25000         0 
-# 156      47 AA              60000       NaN 
-# 157      47 BA              28000      7110.
-# 158      47 Certificate      3000     10051.
-# 159      47 Graduate        69000     47203.
-# 160      48 AA              15000      5386.
-# 161      48 BA              20000      3604.
-# 162      48 Certificate     11000      3340.
-# 163      48 Graduate        33000      7447.
-# 164      49 AA               7000       NaN 
-# 165      49 BA              18000     11051.
-# 166      49 Certificate      6000       NaN 
-# 167      49 Graduate       100000       NaN 
-# 168      50 AA             120000       NaN 
-# 169      50 BA               8000       NaN 
-# 170      50 Certificate     12000       NaN 
-# 171      50 Graduate       110000       NaN 
-# 172      51 AA              28000       NaN 
-# 173      51 BA              21000      7100.
-# 174      51 Certificate     16000      5857.
-# 175      51 Graduate        30000     20992.
-# 176      53 AA              11000      5804.
-# 177      53 BA              19000      4206.
-# 178      53 Certificate     13000      9258.
-# 179      53 Graduate        50000     12258.
-# 180      54 AA              13000       NaN 
-# 181      54 BA              49000       NaN 
-# 182      54 Certificate      6000       NaN 
-# 183      54 Graduate        12000       NaN 
-# 184      55 AA              18000       NaN 
-# 185      55 BA              14000      5659.
-# 186      55 Certificate     21000       NaN 
-# 187      55 Graduate        32000     14586.
-# 188      56 AA              11000       NaN 
-# 189      56 BA              20000       NaN 
-
 
 ```
 
@@ -752,7 +466,7 @@ state_educ_raceeth <- sippdecsvy |>
          TEHC_ST <= 60
          ) |>
   group_by(TEHC_ST, educ_grp_cert, raceeth) |>
-  summarize(meddebt = survey_median(TOEDDEBTVAL)) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL), unw_count = n()) |>
   print(n = 500)
 ```
 
@@ -764,8 +478,81 @@ state_educ_raceeth |> write_csv("data/state_educ_raceeth.csv")
 ```
 
 
+## Debt by education level and age
+
+```{r}
+sippdecsvy |>
+  filter(
+    EED_SCRNR == 2,
+    educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+    TOEDDEBTVAL > 0,
+    !is.na(age_grp)
+         ) |>
+  mutate(
+    educ_grp_2 = if_else(
+      educ_grp_cert == "Graduate", "G", "UG")
+    ) |>
+  group_by(age_grp, educ_grp_2) |>
+  summarize(meddebt = survey_median(TOEDDEBTVAL)) |>
+  arrange(age_grp, desc(educ_grp_2))
+
+```
+
 
 # Experimental analyses
 
+## Identifying possible parents of college students
+
+* EPAR_SCRNR: Shows whether a respondent is a parent (biological, step, or adoptive)
+** 1 = Yes, 2 = No
+
+* ERP: Identifies if adult is a reference parent to any household children under 18 years old
+** 1 = Yes, 2 = No
+
+* RPNCHILD1: Person number of child 1
+** 101:499 (or NA)
+
+* EANYKID: Did ... have any children under 21 years of age who lived elsewhere with their other parent or guardian at any time during the reference period?
+** 1 = Yes, 2 = No
+
+EPAR_SCRNR / RPNCHILD1
+
+```{r}
+sippdec |>
+  group_by(EPAR_SCRNR, RPNCHILD1) |>
+  summarize(max(RPNCHILD1), n()) |>
+  print(n = 30)
+
+# If respondent is not a parent (EPAR_SCRNR == 2), RPNCHILD1 is NA.
+# However, if respondent IS a parent, RPNCHILD1 may also be NA.
+
+```
+
+EPAR_SCRNR / EANYKID
+
+```{r}
+
+sippdec |>
+  filter(is.na(RPNCHILD1)) |>
+  group_by(EPAR_SCRNR, EANYKID) |>
+  summarize(n())
+
+#   EPAR_SCRNR EANYKID `n()`
+#        <int>   <int> <int>
+# 1          1       1   697
+# 2          1       2 13340
+# 3          1      NA   862
+# 4          2      NA 14366
+
+# A large number of respondents are parents (EPAR_SCRNR == 1) but do not have any children in the household (RPNCHILD1 is NA) AND do not have children living with another parent or guardian (EANYKID == 2).
+
+# This might mean a large proportion of those children are living on their own/at school?
+
+```
+
+
 
 ## Identifying recent completers
+
+
+## Analysis by income level
