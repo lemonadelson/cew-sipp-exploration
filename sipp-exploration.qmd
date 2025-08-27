@@ -3,7 +3,7 @@ title: "SIPP Experimentation"
 format: html
 embed-resources: true
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 # Setup 
@@ -29,12 +29,12 @@ pu <- fread(ds, sep = "|", select = c(
   
   #Common demographics variables, including age at time of interview (TAGE)
   #	and monthly age during the reference period (TAGE_EHC)
-  'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR',
+  'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR', 'EAFNOW',
   
   #Additional variables for analysis
   'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN',
   # Parent/child variables
-  'EPAR_SCRNR', 'ERP', 'RPNCHILD1', 'EANYKID'))
+  'EPAR_SCRNR', 'ERP', 'RPNCHILD1', 'EANYKID', 'EPNPAR1'))
 
 #Make sure all the column names are upper-case
 names(pu) <- toupper(names(pu))
@@ -129,20 +129,23 @@ sippdec <- pu |>
     !is.na(EEDUC)
   ) |>
   
-  # Create 4 education groups
+  # Create education groups
   mutate(
     educ_grp = case_when(
-      EEDUC <= 39 ~ "HS or less",
-      EEDUC %in% c(40,41) ~ "Some college",
-      EEDUC == 42 ~ "AA",
-      EEDUC == 43 ~ "BA",
-      TRUE ~ "Graduate"
+      EEDUC <= 39 ~ "1_HS or less",
+      EEDUC %in% c(40,41) ~ "2_Some college",
+      EEDUC == 42 ~ "3_AA",
+      EEDUC == 43 ~ "4_BA",
+      EEDUC == 44 ~ "5_MA",
+      EEDUC == 45 ~ "6_Professional degree",
+      EEDUC == 46 ~ "7_Doctorate degree",
+      TRUE ~ NA
     ),
     
     # Add certificates
     educ_grp_cert = case_when(
-      educ_grp %in% c("HS or less", "Some college") & ECERT == 1 ~ "Certificate",
-      educ_grp %in% c("HS or less", "Some college") & EPROCERT == 1 ~ "Certificate",
+      educ_grp %in% c("1_HS or less", "2_Some college") & ECERT == 1 ~ "8_Certificate",
+      educ_grp %in% c("1_HS or less", "2_Some college") & EPROCERT == 1 ~ "8_Certificate",
       TRUE ~ educ_grp
     ),
     
@@ -409,12 +412,17 @@ sippdecsvy |>
 
 sippdecsvy |>
   filter(EED_SCRNR == 2,
-         educ_grp_cert %in% c("AA", "BA", "Graduate", "Certificate"),
+         educ_grp_cert %in% c("3_AA", "4_BA", "5_MA", "6_Professional degree", "7_Doctorate degree", "8_Certificate"),
          TOEDDEBTVAL > 0,
+         TPEARN > 0,
          !is.na(age_grp)
          ) |>
   group_by(age_grp, educ_grp_cert) |>
-  summarize(meddebt = survey_median(TOEDDEBTVAL), unw_count = n())
+  summarize(
+    meddebt = survey_median(TOEDDEBTVAL),
+    medearn_month = survey_median(TPEARN),
+    unw_count = n()) |>
+  print (n = 22)
 
 ```
 
@@ -546,10 +554,28 @@ sippdec |>
 
 # A large number of respondents are parents (EPAR_SCRNR == 1) but do not have any children in the household (RPNCHILD1 is NA) AND do not have children living with another parent or guardian (EANYKID == 2).
 
-# This might mean a large proportion of those children are living on their own/at school?
-
+# Children who are away at school are still generally considered part of the household, so this may be capturing adult children who are not in school
 ```
 
+Child in household 18-24
+
+Create child data frame
+```{r}
+sippdec_1824 <- sippdec |>
+  filter(!is.na(EPNPAR1),
+         age_grp == "18 to 24") |>
+  select(SSUID, PNUM, ERESIDENCEID, ERELRPE, EED_SCRNR, TEHC_ST, WPFINWGT, ESEX, TAGE_EHC, TOEDDEBTVAL, TDEBT_ED, EPNPAR1, educ_grp_cert, raceeth)
+  
+```
+
+Identify parents of children
+```{r}
+sippdec |>
+  filter(ERESIDENCEID %in% sippdec_1824$ERESIDENCEID,
+         EPAR_SCRNR == 1) |>
+  summarize(n())
+  
+```
 
 
 ## Identifying recent completers
