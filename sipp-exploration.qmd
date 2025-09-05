@@ -8,6 +8,7 @@ editor_options:
 
 # Setup 
 
+## Import 2020 data
 This code taken from Census website, with some edits made to variables and file location.
 
 ```{r}
@@ -32,7 +33,33 @@ pu <- fread(ds, sep = "|", select = c(
   'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR', 'EAFNOW',
   
   #Additional variables for analysis
-  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN',
+  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN','RMESR',
+  # Parent/child variables
+  'EPAR_SCRNR', 'ERP', 'RPNCHILD1', 'EANYKID', 'EPNPAR1'))
+
+#Make sure all the column names are upper-case
+names(pu) <- toupper(names(pu))
+
+```
+
+## Import 2021 data
+```{r}
+
+ds21 <- c("/Users/mca141/Documents/Lumina/lumina-sipp/data/pu2021.csv")
+pu21 <- fread(ds21, sep = "|", select = c(
+  
+  #Common case identification variables
+  'SSUID','PNUM','MONTHCODE','ERESIDENCEID','ERELRPE','SPANEL','SWAVE', 'TEHC_ST',
+  
+  #The base weight
+  'WPFINWGT',
+  
+  #Common demographics variables, including age at time of interview (TAGE)
+  #	and monthly age during the reference period (TAGE_EHC)
+  'ESEX','TAGE','TAGE_EHC','ERACE', 'TRACE', 'EORIGIN','EEDUC','ECERT', 'EPROCERT', 'EED_SCRNR', 'EAFNOW',
+  
+  #Additional variables for analysis
+  'TPTOTINC','EDEBT_ED','EJSEDDEBT','EOEDDEBT','TJSEDDEBTVAL','TOEDDEBTVAL','TDEBT_ED','TPEARN','RMESR',
   # Parent/child variables
   'EPAR_SCRNR', 'ERP', 'RPNCHILD1', 'EANYKID', 'EPNPAR1'))
 
@@ -48,6 +75,13 @@ library(tidyverse)
 library(haven)
 library(srvyr)
 ```
+
+## Combine 2020 and 2021
+```{r}
+pu2021 <- pu |>
+  bind_rows(pu21)
+```
+
 
 # Exploration of full data set
 
@@ -129,8 +163,11 @@ sippdec <- pu |>
     !is.na(EEDUC)
   ) |>
   
-  # Create education groups
   mutate(
+    # Create unique identifier
+    id = paste0(SSUID, PNUM),
+    
+    # Create education groups
     educ_grp = case_when(
       EEDUC <= 39 ~ "1_HS or less",
       EEDUC %in% c(40,41) ~ "2_Some college",
@@ -233,6 +270,35 @@ Create age groups (incorporated into "Create sippdec")
 ```{r}
 sippdecsvy <- sippdec |> as_survey_design(weights = WPFINWGT)
 ```
+
+# Create data frame of full-year earnings
+
+```{r}
+
+annual_earnings <- pu |>
+  filter(!is.na(TPEARN)) |>
+  mutate(id = paste0(SSUID, PNUM)) |>
+  group_by(id) |>
+  summarize(year_earn = sum(TPEARN)) |>
+  filter(year_earn > 0)
+# different months have different weights, but doesn't seem to work to use survey_total...will just rely on weights from Dec
+  
+```
+
+Attach to sippdec
+```{r}
+sippdec_ae <- sippdec |>
+  left_join(annual_earnings, by = "id")
+```
+
+Survey object
+```{r}
+
+sippdecsvy_ae <- sippdec_ae |> as_survey_design(weights = WPFINWGT)
+
+```
+
+
 
 # Descriptive statistics (Dec 2019)
 
@@ -406,21 +472,24 @@ sippdecsvy |>
 # Multivariate analyses
 
 
-## Median education loans by highest credential and age
+## Median education loans and earnings by highest credential and age
 
 ```{r}
 
-sippdecsvy |>
+sippdecsvy_ae |>
   filter(EED_SCRNR == 2,
          educ_grp_cert %in% c("3_AA", "4_BA", "5_MA", "6_Professional degree", "7_Doctorate degree", "8_Certificate"),
          TOEDDEBTVAL > 0,
-         TPEARN > 0,
-         !is.na(age_grp)
+         !is.na(TPEARN) # >= 0
+         ,
+         !is.na(age_grp),
+         !is.na(year_earn)
          ) |>
   group_by(age_grp, educ_grp_cert) |>
   summarize(
     meddebt = survey_median(TOEDDEBTVAL),
     medearn_month = survey_median(TPEARN),
+    medearn_year = survey_median(year_earn),
     unw_count = n()) |>
   print (n = 22)
 
@@ -509,7 +578,7 @@ sippdecsvy |>
 
 # Experimental analyses
 
-## Identifying possible parents of college students
+## Identifying possible parents holding ed debt for children
 
 * EPAR_SCRNR: Shows whether a respondent is a parent (biological, step, or adoptive)
 ** 1 = Yes, 2 = No
@@ -564,16 +633,17 @@ Create child data frame
 sippdec_1824 <- sippdec |>
   filter(!is.na(EPNPAR1),
          age_grp == "18 to 24") |>
-  select(SSUID, PNUM, ERESIDENCEID, ERELRPE, EED_SCRNR, TEHC_ST, WPFINWGT, ESEX, TAGE_EHC, TOEDDEBTVAL, TDEBT_ED, EPNPAR1, educ_grp_cert, raceeth)
+  select(id, SSUID, PNUM, ERESIDENCEID, ERELRPE, EED_SCRNR, TEHC_ST, WPFINWGT, ESEX, TAGE_EHC, TOEDDEBTVAL, TDEBT_ED, EPNPAR1, educ_grp_cert, raceeth)
   
 ```
 
 Identify parents of children
 ```{r}
-sippdec |>
-  filter(ERESIDENCEID %in% sippdec_1824$ERESIDENCEID,
-         EPAR_SCRNR == 1) |>
-  summarize(n())
+sippdecsvy |>
+  filter(!(ERESIDENCEID %in% sippdec_1824$ERESIDENCEID),
+         EPAR_SCRNR == 1,
+         !is.na(TOEDDEBTVAL)) |>
+  summarize(n()) # why 0?
   
 ```
 
